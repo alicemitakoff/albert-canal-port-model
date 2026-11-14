@@ -28,7 +28,15 @@
 html,body{height:100%}
 body{margin:0;background:var(--navy);color:var(--ivory);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
 #gl{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
-body.proj{background:#000!important;overflow:hidden} body.proj *{visibility:hidden!important} body.proj #gl,body.proj #projUI,body.proj #projUI *{visibility:visible!important}
+body.proj{background:#000!important;overflow:hidden} body.proj *{visibility:hidden!important} body.proj #gl,body.proj #projUI,body.proj #projUI *,body.proj #projOver,body.proj #projOver *{visibility:visible!important}
+#projOver{position:fixed;left:0;top:0;transform-origin:0 0;pointer-events:none;overflow:hidden;z-index:50;color:#fff;font-family:Arial,Helvetica,sans-serif}
+#projOver #labels{position:absolute;inset:0} #projOver .lbl .card{background:rgba(6,20,38,.88);border:1px solid rgba(255,255,255,.55);box-shadow:none;pointer-events:none} #projOver .lbl .n{font-size:1.05em} #projOver .lbl .stem{background:#fff;width:2px}
+#projIn{position:absolute;left:70.6%;top:65.2%;width:20.6%;aspect-ratio:16/9;box-sizing:border-box;border:.18em solid #fff;border-radius:.3em} #projIn span{position:absolute;left:.5em;top:.4em;font-size:.6em;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:rgba(6,20,38,.85);padding:.2em .5em;border-radius:.3em} #projOver.noin #projIn{display:none}
+#projCap{position:absolute;left:70.6%;top:87.4%;width:20.6%;box-sizing:border-box;background:rgba(6,20,38,.92);border-radius:.4em;padding:.45em .7em;line-height:1.2} #projCap .b{display:none}
+#projCap .k{font-size:.62em;letter-spacing:.08em;text-transform:uppercase;color:#7cc8ff;font-weight:700} #projCap .h{font-size:1.02em;font-weight:700;margin:.25em 0} #projCap .b{font-size:.68em;color:#dbe8f7}
+#projCap .bar{height:.28em;background:rgba(255,255,255,.2);border-radius:1em;margin-top:.6em;overflow:hidden} #projCap .bar i{display:block;height:100%;background:#7cc8ff;width:0}
+#projCap .bt{display:flex;align-items:center;gap:.5em;font-size:.72em;margin-top:.6em;font-weight:700} #projCap .bt .cell{flex:1;height:.9em;border:2px solid #fff;border-radius:.2em;overflow:hidden} #projCap .bt .cell i{display:block;height:100%}
+#projGuide{position:absolute;inset:0;width:100%;height:100%;opacity:.75;display:none} #projOver.guide #projGuide{display:block} #projOver.nocap #projCap{display:none} #projOver.nolab #labels{display:none}
 body.proj #gl{inset:auto;left:0;top:0;transform-origin:0 0;cursor:default} #projUI{position:fixed;inset:0;z-index:99999;pointer-events:none;font:13px Arial,sans-serif;color:#fff}
 #projUI .h{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border:2px solid #ff3b6b;border-radius:50%;background:rgba(255,59,107,.25);pointer-events:auto;cursor:move;touch-action:none}
 #projUI .tip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,.72);padding:8px 12px;border-radius:8px;white-space:nowrap} #projUI.off .h,#projUI.off .tip{display:none}
@@ -1882,12 +1890,12 @@ function uiRects(){ if(document.body.classList.contains('hidden-ui')) return [];
   _ui=['.brand','#scnTabs','.toolrow','#mini','#live','#story','#viewSeg','.zoom','.timeline','#act','#endc'].map(q=>document.querySelector(q)).filter(e=>e&&!e.hidden&&e.getClientRects().length)
     .map(e=>{ const r=e.getBoundingClientRect(); return {x0:r.left-6,x1:r.right+6,y0:r.top-6,y1:r.bottom+6}; }).filter(r=>r.x1-r.x0>20); return _ui; }
 function updateLabels(t){
-  const W=window.innerWidth, H=window.innerHeight, vid=VIEWS[cam.v].id; const vis=[];
+  const W=PROJ?innerWidth:window.innerWidth, H=PROJ?Math.round(innerWidth*PROJ_H/PROJ_W):window.innerHeight, vid=VIEWS[cam.v].id; const vis=[]; const LC=PROJ?projCam:camera;
   for(const L of LABELS){
     const on=(L.clock?!labelsOn:labelsOn)&&!renderer.xr.isPresenting&&(L.scn==='*'||(Array.isArray(L.scn)?L.scn.includes(SC.id):(L.scn||'hub')===SC.id))&&t>=L.from&&t<L.to&&!(L.hide&&L.hide.includes(vid))&&(!L.when||L.when(t,vid));
     if(!on){ if(L.el.style.display!=='none') L.el.style.display='none'; continue; }
-    const p=L.at(); _v.copy(p).project(camera);
-    const dist=camera.position.distanceTo(p);
+    const p=L.at(); _v.copy(p).project(LC);
+    const dist=PROJ?200:camera.position.distanceTo(p);
     let x=(_v.x*0.5+0.5)*W, y=(-_v.y*0.5+0.5)*H, br=null;
     if(L.batt){ br=battRect(L.batt(),W,H); if(br){ x=(br.x0+br.x1)/2; y=br.y0-3; } }
     if((L.batt&&!br)||_v.z>1||_v.x<-1.2||_v.x>1.2||_v.y<-1.2||_v.y>1.2||(L.minor&&dist>1800)||dist>(L.max||4200)){ L.el.style.display='none'; continue; }
@@ -1902,7 +1910,7 @@ function updateLabels(t){
   }
   // place the nearest and most important first, lift later ones above anything they would cover
   vis.sort((a,b)=>((!!b.batt)-(!!a.batt))||((!!a.minor)-(!!b.minor))||(a._d-b._d)); const placed=[];
-  const ui=uiRects();
+  const ui=PROJ?[]:uiRects();
   // the batteries themselves are obstacles: no label box may sit on top of them
   for(const n of (SC.id==='hub'?[BA,BH1,PB,H2]:[])){ const r=battRect(n,W,H); if(r) placed.push({x0:r.x0-6,x1:r.x1+6,y0:r.y0-6,y1:r.y1+6}); }
   for(const L of vis){ const card=L.el.firstChild; if(!L._w){ L._w=card.offsetWidth; L._h=card.offsetHeight; }
@@ -3284,18 +3292,41 @@ function frame(now){
   updateTreesV2(now);
   if(!xr){ updateLabels(tNow); updateHUD(tNow); }
   if(Math.floor(now/100)!==Math.floor((now-dt*1000)/100)) drawMaps(kmOf(barge.position));
-  if(PROJ&&!xr){ if(ended) projNextScenario(); if((projTick++)%90===0) scene.traverse(o=>{ if(o.name==='treeBill'||o.name==='tree3d') o.visible=false; }); renderer.render(scene,projCam); } else
+  if(PROJ&&!xr){ if(ended) projNextScenario(); updateLabels(tNow); if(window.__projCaption) window.__projCaption(tNow);
+    if((projTick++)%90===0){ projTrees.length=0; scene.traverse(o=>{ if(o.name==='treeBill'||o.name==='tree3d') projTrees.push(o); }); }
+    const W=innerWidth, H=Math.round(W*PROJ_H/PROJ_W);
+    // pass 1: the whole model from straight above (tree models hidden, the ground photo shows the canopy)
+    for(const o of projTrees) o.visible=false; scene.fog=null;
+    renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); renderer.render(scene,projCam);
+    // pass 2: the close-up 3D camera of the original animation, drawn onto the flat warehouse roof of the model
+    if(projInset){ const [fx,fy,fw]=PROJ_INSET, iw=Math.round(fw*W), ih=Math.round(iw*9/16), ix=Math.round(fx*W), iy=H-Math.round(fy*H)-ih;
+      for(const o of projTrees) o.visible=true; scene.fog=projFog;
+      renderer.setScissorTest(true); renderer.setScissor(ix,iy,iw,ih); renderer.setViewport(ix,iy,iw,ih); renderer.render(scene,camera); renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); }
+  } else
   if(composer&&!xr) composer.render(dt); else renderer.render(scene,camera);
 }
 /* ---- projector mode: loops the stories, no interface, four corner handles to line the picture up with the printed model ---- */
-let projList=['berth','lock'], projIdx=0, projTick=0;   // tree models read as dark stars from straight above, the ground photo already shows the canopy
+let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_INSET=[0.706,0.652,0.206];   // tree models read as dark stars from straight above, the ground photo already shows the canopy
 function projNextScenario(){ projIdx=(projIdx+1)%projList.length; setScenario(projList[projIdx]); guided=false; setPaused(false); }
 function startProjection(){
-  document.body.classList.add('proj'); guided=false; scene.fog=null;
+  document.body.classList.add('proj'); guided=false; projFog=scene.fog; scene.fog=null; camera.aspect=16/9; camera.updateProjectionMatrix(); projInset=!params.has('noinset');
   { const want=(params.get('proj')||'').split(',').filter(k=>SCN[k]); if(want.length) projList=want; projIdx=0; setScenario(projList[0]); guided=false; setPaused(false); }
   scene.traverse(o=>{ if(o.isSprite||o.name==='treeBill') o.visible=false; });   // flat tree cards read as specks from straight above; the ground photo already shows the canopy
   const ui=document.createElement('div'); ui.id='projUI'; document.body.appendChild(ui);
-  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   Space pause'; ui.appendChild(tip);
+  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   Space pause'; ui.appendChild(tip);
+  const over=document.createElement('div'); over.id='projOver'; document.body.appendChild(over); over.appendChild($('labels')); labelsOn=true;
+  const guide=document.createElement('img'); guide.id='projGuide'; guide.src='../print/top_view_for_projection_alignment.png'; over.appendChild(guide);
+  const cap=document.createElement('div'); cap.id='projCap'; cap.innerHTML='<div class="k"></div><div class="h"></div><div class="b"></div><div class="bt"><span>e-barge packs</span><span class="cell"><i></i></span><span class="pc"></span></div><div class="bar"><i></i></div>'; over.appendChild(cap);
+  { const fr=document.createElement('div'); fr.id='projIn'; fr.innerHTML='<span>Close-up</span>'; over.appendChild(fr); if(!projInset) over.classList.add('noin'); }
+  const NAMES={berth:'Battery swap at the berth',lock:'Battery swap at the lock',hub:'Battery swap at the hub'}; let capKey='';
+  window.__projCaption=t=>{ let c=CH[0]; for(const k of CH) if(k.t<=t) c=k; const key=SC.id+'|'+(c?c.t:'');
+    if(key!==capKey){ capKey=key; cap.querySelector('.k').textContent=NAMES[SC.id]||''; cap.querySelector('.h').textContent=c?c.h:''; const b=c?String(c.b||''):''; const m=b.match(/^.*?[.!?](\s|$)/); cap.querySelector('.b').textContent=(m?m[0]:b).trim(); }
+    cap.querySelector('.bar i').style.width=(100*t/T_END).toFixed(1)+'%';
+    let pc=null; for(const L of LABELS){ if(L.id==='bay2'&&L.pct){ try{ pc=Math.round(L.pct(t)); }catch(e){} } }
+    const bt=cap.querySelector('.bt'); if(pc===null||SC.id==='hub'){ bt.style.display='none'; } else { bt.style.display='flex'; const i=bt.querySelector('.cell i'); i.style.width=pc+'%'; i.style.background=pctCol(pc); bt.querySelector('.pc').textContent=pc+'%'; bt.querySelector('.pc').style.color=pctCol(pc); } };
+  // richer picture for a projector on white plastic: deep water, stronger colour, darker ground
+  try{ WATER_MAT.color.set('#0a3a58'); WATER_MAT.envMapIntensity=0.03; WATER_MAT.roughness=0.35; WATER_MAT.needsUpdate=true; }catch(e){}
+  renderer.domElement.style.filter=params.get('look')==='plain'?'':'contrast(1.22) saturate(1.55) brightness(0.86)';
   const g=renderer.domElement; let P=null; const KEY='albertCanalProjPin';
   const base=()=>{ const w=innerWidth,h=Math.round(w*PROJ_H/PROJ_W), y=Math.max(0,(innerHeight-h)/2); return [[0,y],[w,y],[w,y+h],[0,y+h]]; };
   try{ const sv=JSON.parse(localStorage.getItem(KEY)||'null'); if(sv&&sv.length===4) P=sv.map(([a,b])=>[a*innerWidth,b*innerHeight]); }catch(e){}
@@ -3308,11 +3339,11 @@ function startProjection(){
     for(let c=0;c<8;c++){ let m=c; for(let r=c+1;r<8;r++) if(Math.abs(A[r][c])>Math.abs(A[m][c])) m=r; [A[c],A[m]]=[A[m],A[c]]; [b[c],b[m]]=[b[m],b[c]]; if(Math.abs(A[c][c])<1e-12) return;
       for(let r=0;r<8;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; for(let q=c;q<8;q++) A[r][q]-=f*A[c][q]; b[r]-=f*b[c]; } }
     const H=b.map((v,k)=>v/A[k][k]);
-    g.style.transform='matrix3d('+[H[0],H[3],0,H[6], H[1],H[4],0,H[7], 0,0,1,0, H[2],H[5],0,1].join(',')+')';
+    const M='matrix3d('+[H[0],H[3],0,H[6], H[1],H[4],0,H[7], 0,0,1,0, H[2],H[5],0,1].join(',')+')'; g.style.transform=M; over.style.transform=M; over.style.width=w+'px'; over.style.height=h+'px'; over.style.fontSize=(w/96)+'px';
     hs.forEach((d,k)=>{ d.style.left=P[k][0]+'px'; d.style.top=P[k][1]+'px'; });
     if(save) try{ localStorage.setItem(KEY,JSON.stringify(P.map(([a,c])=>[a/innerWidth,c/innerHeight]))); }catch(e){} }
   window.__projPin=()=>pin(false); resize();
   addEventListener('keydown',e=>{ const k=e.key.toLowerCase();
-    if(k==='h') ui.classList.toggle('off'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
+    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
 }
 </script>

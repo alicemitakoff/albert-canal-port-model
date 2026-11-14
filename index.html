@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Albert Canal port model</title>
+<style>
+:root{--bg:#0b1e33;--card:#12294a;--line:#23406b;--ink:#eaf2ff;--mut:#9fb6d6;--acc:#7cc8ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,Arial,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 20px 60px}h1{font-size:30px;margin:0 0 4px}h2{font-size:20px;margin:34px 0 10px}
+p{margin:6px 0;color:var(--mut)}a{color:var(--acc)}
+.hero{display:block;width:100%;border-radius:14px;border:1px solid var(--line);margin:18px 0}
+.btn{display:inline-block;background:var(--acc);color:#04213d;font-weight:700;text-decoration:none;padding:14px 22px;border-radius:12px;margin:8px 10px 8px 0}
+.btn.alt{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.f{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-decoration:none;color:var(--ink)}
+.f b{display:block}.f span{color:var(--mut);font-size:14px}
+ol{color:var(--mut);padding-left:22px}li{margin:4px 0}img.s{width:100%;border-radius:12px;border:1px solid var(--line)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:700px){.two{grid-template-columns:1fr}}
+</style></head><body><main>
+<h1>Albert Canal port model</h1>
+<p>BCTN Meerhout quay, the battery swapping station and Kwaadmechelen lock. A 3D printed model at 1:1600 with the animation projected onto it from above.</p>
+<a class="btn" href="projection/">Start the projection</a>
+<a class="btn alt" href="projection/?proj=berth">Berth story only</a>
+<a class="btn alt" href="projection/?proj=lock">Lock story only</a>
+<img class="hero" src="preview_projection.png" alt="The projection view: the port and lock seen from straight above">
+
+<h2>How to project</h2>
+<ol>
+<li>Open this page on the laptop connected to the projector and press Start the projection.</li>
+<li>Press F for full screen.</li>
+<li>Drag the four pink circles onto the four corners of the printed model.</li>
+<li>Press H to hide the circles. The position is remembered on that laptop.</li>
+<li>Space pauses. R resets the corners.</li>
+</ol>
+
+<h2>Print files (Bambu Lab P2S)</h2>
+<p>Eight tiles and the cranes. Print the cranes and tile B2 first. Settings are in the instructions file.</p>
+<div class="grid">
+<a class="f" href="print/tile_B2.3mf" download><b>tile_B2.3mf</b><span>Swap station, quay, containers</span></a>
+<a class="f" href="print/tile_B1.3mf" download><b>tile_B1.3mf</b><span>Quay west, containers</span></a>
+<a class="f" href="print/tile_B3.3mf" download><b>tile_B3.3mf</b><span>South bank at the lock</span></a>
+<a class="f" href="print/tile_B4.3mf" download><b>tile_B4.3mf</b><span>South bank, upper reach</span></a>
+<a class="f" href="print/tile_A1.3mf" download><b>tile_A1.3mf</b><span>Canal west</span></a>
+<a class="f" href="print/tile_A2.3mf" download><b>tile_A2.3mf</b><span>Canal in front of the quay</span></a>
+<a class="f" href="print/tile_A3.3mf" download><b>tile_A3.3mf</b><span>Lock and road bridge</span></a>
+<a class="f" href="print/tile_A4.3mf" download><b>tile_A4.3mf</b><span>Upper reach</span></a>
+<a class="f" href="print/cranes_x3.3mf" download><b>cranes_x3.3mf</b><span>Three gantry cranes</span></a>
+<a class="f" href="print/README.txt"><b>README.txt</b><span>Print settings and assembly</span></a>
+</div>
+<h2>Where each tile goes</h2>
+<img class="s" src="print/tile_layout.png" alt="Tile layout: A1 to A4 north row, B1 to B4 south row">
+<h2>Details</h2>
+<div class="two"><div><img class="s" src="preview_swap_station.png" alt="The battery swapping station on tile B2"><p>The battery swapping station on tile B2.</p></div>
+<div><img class="s" src="print/top_view_for_projection_alignment.png" alt="Top view of the whole printed model"><p>The whole model from above, 720 by 405 mm.</p></div></div>
+<p style="margin-top:30px;font-size:14px">Orthofoto 2024 and DHM Vlaanderen II © Digitaal Vlaanderen. Map data © OpenStreetMap contributors.</p>
+</main></body></html>

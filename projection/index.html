@@ -3301,23 +3301,38 @@ function frame(now){
     // pass 2: the close-up 3D camera of the original animation, drawn onto the flat warehouse roof of the model
     if(projInset){ const [fx,fy,fw]=PROJ_INSET, iw=Math.round(fw*W), ih=Math.round(iw*9/16), ix=Math.round(fx*W), iy=H-Math.round(fy*H)-ih;
       for(const o of projTrees) o.visible=true; scene.fog=projFog;
-      renderer.setScissorTest(true); renderer.setScissor(ix,iy,iw,ih); renderer.setViewport(ix,iy,iw,ih); renderer.render(scene,camera); renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); }
+      renderer.setScissorTest(true); renderer.setScissor(ix,iy,iw,ih); renderer.setViewport(ix,iy,iw,ih); projCloseUpdate(dt); renderer.render(scene,projClose); renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); }
   } else
   if(composer&&!xr) composer.render(dt); else renderer.render(scene,camera);
 }
 /* ---- projector mode: loops the stories, no interface, four corner handles to line the picture up with the printed model ---- */
-let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_INSET=[0.706,0.652,0.206];   // tree models read as dark stars from straight above, the ground photo already shows the canopy
+/* close-up camera for the projection: stands out over the canal and looks back at the vessels, so the tender and the battery swap are in front and the quay cranes are behind them */
+const projClose=new THREE.PerspectiveCamera(40,16/9,1,6000); const projCT=new V3(); let projCInit=false, projSide=1;
+function projCloseUpdate(dt){
+  let tg; try{ tg=VIEWS[0].target(); }catch(e){ tg=barge.position.clone(); }
+  if(!projCInit){ projCT.copy(tg); projCInit=true; } else projCT.lerp(tg,1-Math.exp(-dt*4));
+  const lock=SC.id!=='berth', d=lock?120:92, el=lock?0.62:0.40, a=(14.4+(lock?-20:24))*Math.PI/180;
+  // canal side: across the canal from the quay (north), turned a little along the canal for a three quarter view
+  const nx=Math.sin(a)*projSide, nz=-Math.cos(a)*projSide;
+  projClose.position.set(projCT.x+nx*Math.cos(el)*d, Math.max(projCT.y,0)+Math.sin(el)*d, projCT.z+nz*Math.cos(el)*d);
+  const sh=lock?20:16; projClose.lookAt(projCT.x+nx*sh,Math.max(projCT.y,0),projCT.z+nz*sh);   // aim a little short of the vessels so they sit above the caption bar
+}
+let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_SIZES=[[0.61,0.635,0.345],[0.706,0.652,0.206]]; let PROJ_INSET=PROJ_SIZES[0], projSize=0;   // tree models read as dark stars from straight above, the ground photo already shows the canopy
 function projNextScenario(){ projIdx=(projIdx+1)%projList.length; setScenario(projList[projIdx]); guided=false; setPaused(false); }
 function startProjection(){
   document.body.classList.add('proj'); guided=false; projFog=scene.fog; scene.fog=null; camera.aspect=16/9; camera.updateProjectionMatrix(); projInset=!params.has('noinset');
   { const want=(params.get('proj')||'').split(',').filter(k=>SCN[k]); if(want.length) projList=want; projIdx=0; setScenario(projList[0]); guided=false; setPaused(false); }
   scene.traverse(o=>{ if(o.isSprite||o.name==='treeBill') o.visible=false; });   // flat tree cards read as specks from straight above; the ground photo already shows the canopy
   const ui=document.createElement('div'); ui.id='projUI'; document.body.appendChild(ui);
-  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   Space pause'; ui.appendChild(tip);
+  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   V other side   B close-up size   Space pause'; ui.appendChild(tip);
   const over=document.createElement('div'); over.id='projOver'; document.body.appendChild(over); over.appendChild($('labels')); labelsOn=true;
   const guide=document.createElement('img'); guide.id='projGuide'; guide.src='../print/top_view_for_projection_alignment.png'; over.appendChild(guide);
   const cap=document.createElement('div'); cap.id='projCap'; cap.innerHTML='<div class="k"></div><div class="h"></div><div class="b"></div><div class="bt"><span>e-barge packs</span><span class="cell"><i></i></span><span class="pc"></span></div><div class="bar"><i></i></div>'; over.appendChild(cap);
   { const fr=document.createElement('div'); fr.id='projIn'; fr.innerHTML='<span>Close-up</span>'; over.appendChild(fr); if(!projInset) over.classList.add('noin'); }
+  const layout=()=>{ PROJ_INSET=PROJ_SIZES[projSize]; const [fx,fy,fw]=PROJ_INSET, fh=fw*PROJ_W/PROJ_H*9/16, fr=$('projIn');
+    fr.style.left=(fx*100)+'%'; fr.style.top=(fy*100)+'%'; fr.style.width=(fw*100)+'%';
+    cap.style.left=(fx*100)+'%'; cap.style.width=(fw*100)+'%'; cap.style.top='auto'; cap.style.bottom=(100-(fy+fh)*100)+'%'; cap.style.borderRadius='0 0 .3em .3em'; cap.style.background='rgba(6,20,38,.78)'; };
+  window.__projLayout=layout; setTimeout(layout,0);
   const NAMES={berth:'Battery swap at the berth',lock:'Battery swap at the lock',hub:'Battery swap at the hub'}; let capKey='';
   window.__projCaption=t=>{ let c=CH[0]; for(const k of CH) if(k.t<=t) c=k; const key=SC.id+'|'+(c?c.t:'');
     if(key!==capKey){ capKey=key; cap.querySelector('.k').textContent=NAMES[SC.id]||''; cap.querySelector('.h').textContent=c?c.h:''; const b=c?String(c.b||''):''; const m=b.match(/^.*?[.!?](\s|$)/); cap.querySelector('.b').textContent=(m?m[0]:b).trim(); }
@@ -3344,6 +3359,6 @@ function startProjection(){
     if(save) try{ localStorage.setItem(KEY,JSON.stringify(P.map(([a,c])=>[a/innerWidth,c/innerHeight]))); }catch(e){} }
   window.__projPin=()=>pin(false); resize();
   addEventListener('keydown',e=>{ const k=e.key.toLowerCase();
-    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
+    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='v'){ projSide=-projSide; } else if(k==='b'){ projSize=(projSize+1)%PROJ_SIZES.length; window.__projLayout(); } else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
 }
 </script>

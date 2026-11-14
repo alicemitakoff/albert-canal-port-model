@@ -39,7 +39,7 @@ body.proj{background:#000!important;overflow:hidden} body.proj *{visibility:hidd
 #projGuide{position:absolute;inset:0;width:100%;height:100%;opacity:.75;display:none} #projOver.guide #projGuide{display:block} #projOver.nocap #projCap{display:none} #projOver.nolab #labels{display:none}
 body.proj #gl{inset:auto;left:0;top:0;transform-origin:0 0;cursor:default} #projUI{position:fixed;inset:0;z-index:99999;pointer-events:none;font:13px Arial,sans-serif;color:#fff}
 #projUI .h{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border:2px solid #ff3b6b;border-radius:50%;background:rgba(255,59,107,.25);pointer-events:auto;cursor:move;touch-action:none}
-#projUI .tip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,.72);padding:8px 12px;border-radius:8px;white-space:nowrap} #projUI.off .h,#projUI.off .tip{display:none}
+#projUI .tip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,.72);padding:8px 12px;border-radius:8px;max-width:92vw;text-align:center} #projUI.off .h,#projUI.off .tip{display:none}
 #gl.drag{cursor:grabbing}
 button{font:inherit;color:inherit}
 .chrome{position:fixed;inset:0;pointer-events:none;transition:opacity .45s ease}
@@ -1894,7 +1894,7 @@ function updateLabels(t){
   for(const L of LABELS){
     const on=(L.clock?!labelsOn:labelsOn)&&!renderer.xr.isPresenting&&(L.scn==='*'||(Array.isArray(L.scn)?L.scn.includes(SC.id):(L.scn||'hub')===SC.id))&&t>=L.from&&t<L.to&&!(L.hide&&L.hide.includes(vid))&&(!L.when||L.when(t,vid));
     if(!on){ if(L.el.style.display!=='none') L.el.style.display='none'; continue; }
-    const p=L.at(); _v.copy(p).project(LC);
+    const p=L.at(); _v.copy(p); if(PROJ) projTable(_v); _v.project(LC);
     const dist=PROJ?200:camera.position.distanceTo(p);
     let x=(_v.x*0.5+0.5)*W, y=(-_v.y*0.5+0.5)*H, br=null;
     if(L.batt){ br=battRect(L.batt(),W,H); if(br){ x=(br.x0+br.x1)/2; y=br.y0-3; } }
@@ -3295,9 +3295,13 @@ function frame(now){
   if(PROJ&&!xr){ if(ended) projNextScenario(); updateLabels(tNow); if(window.__projCaption) window.__projCaption(tNow);
     if((projTick++)%90===0){ projTrees.length=0; scene.traverse(o=>{ if(o.name==='treeBill'||o.name==='tree3d') projTrees.push(o); }); }
     const W=innerWidth, H=Math.round(W*PROJ_H/PROJ_W);
-    // pass 1: the whole model from straight above (tree models hidden, the ground photo shows the canopy)
-    for(const o of projTrees) o.visible=false; scene.fog=null;
-    renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); renderer.render(scene,projCam);
+    if(projIllu){ // the viewer's eye view, laid onto the stage
+      for(const o of projTrees) o.visible=true; scene.fog=null;
+      renderer.setScissorTest(false); renderer.setRenderTarget(projRT); renderer.render(scene,projEyeCam); renderer.setRenderTarget(null);
+      renderer.setViewport(0,0,W,H); renderer.render(projQuadScene,projQuadCam);
+    } else { // flat: the whole model from straight above (tree models hidden, the ground photo shows the canopy)
+      for(const o of projTrees) o.visible=false; scene.fog=null;
+      renderer.setScissorTest(false); renderer.setViewport(0,0,W,H); renderer.render(scene,projCam); }
     // pass 2: the close-up 3D camera of the original animation, drawn onto the flat warehouse roof of the model
     if(projInset){ const [fx,fy,fw]=PROJ_INSET, iw=Math.round(fw*W), ih=Math.round(iw*9/16), ix=Math.round(fx*W), iy=H-Math.round(fy*H)-ih;
       for(const o of projTrees) o.visible=true; scene.fog=projFog;
@@ -3306,6 +3310,37 @@ function frame(now){
   if(composer&&!xr) composer.render(dt); else renderer.render(scene,camera);
 }
 /* ---- projector mode: loops the stories, no interface, four corner handles to line the picture up with the printed model ---- */
+/* ---- illusion mode (the Le Petit Chef technique): an ordinary flat projection, drawn stretched so that from the viewer's side everything stands up in 3D.
+   Pass 1 renders the scene from the viewer's eye. Pass 2 paints the table from straight above: each point of the printed stage gets the colour the viewer
+   would see through it, using the real height of the print, so the picture stays locked to the lock walls, quay and water. ---- */
+const PROJ_A=14.4*Math.PI/180, PROJ_R0=new V3(Math.cos(PROJ_A),0,Math.sin(PROJ_A)), PROJ_U0=new V3(Math.sin(PROJ_A),0,-Math.cos(PROJ_A));
+let projFlip=-1, projIllu=true, projEyeD=1250, projEyeH=1000;   // viewer on the canal (north) side; eye 78 cm out and 62 cm up at model scale
+const projEye=new V3(), projEyeCam=new THREE.PerspectiveCamera(40,16/9,20,7000); let projRT=null, projQuad=null, projQuadScene=null; const projQuadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+function projSetup(){
+  const r=PROJ_R0.clone().multiplyScalar(projFlip), u=PROJ_U0.clone().multiplyScalar(projFlip), cx=PROJ_C[0], cz=PROJ_C[1];
+  projCam.up.copy(u); projCam.position.set(cx,900,cz); projCam.lookAt(cx,0,cz); projCam.updateMatrixWorld(true);
+  projEye.set(cx-u.x*projEyeD, projEyeH, cz-u.z*projEyeD);
+  const e=projEyeCam; e.position.copy(projEye); e.up.set(0,1,0); e.lookAt(cx,0,cz); e.updateMatrixWorld(true); e.matrixWorldInverse.copy(e.matrixWorld).invert();
+  // off-axis frustum that just contains the model footprint (and things up to 70 m tall on it)
+  let l=1e9,rr=-1e9,t=-1e9,b=1e9; const q=new V3();
+  for(const sx of [-1,1]) for(const sz of [-1,1]) for(const y of [0,70]){ q.set(cx+r.x*sx*PROJ_W/2+u.x*sz*PROJ_H/2, y, cz+r.z*sx*PROJ_W/2+u.z*sz*PROJ_H/2).applyMatrix4(e.matrixWorldInverse); const X=q.x/-q.z, Y=q.y/-q.z; l=Math.min(l,X); rr=Math.max(rr,X); t=Math.max(t,Y); b=Math.min(b,Y); }
+  const n=e.near; e.projectionMatrix.makePerspective(l*n,rr*n,t*n,b*n,n,e.far); e.projectionMatrixInverse.copy(e.projectionMatrix).invert();
+  const rw=Math.min(4096,+(params.get('rt')||3840)), rh=Math.max(256,Math.min(4096,Math.round(rw*(t-b)/(rr-l))));
+  if(!projRT||projRT.width!==rw||projRT.height!==rh){ if(projRT) projRT.dispose(); projRT=new THREE.WebGLRenderTarget(rw,rh,{type:THREE.HalfFloatType,samples:4,depthBuffer:true}); }
+  if(!projQuad){
+    const one=new THREE.DataTexture(new Float32Array([0]),1,1,THREE.RedFormat,THREE.FloatType); one.needsUpdate=true;
+    projQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({depthTest:false,depthWrite:false,
+      uniforms:{tEye:{value:null},tH:{value:one},eyeVP:{value:new THREE.Matrix4()},C:{value:new THREE.Vector2()},R:{value:new THREE.Vector2()},U:{value:new THREE.Vector2()},R0:{value:new THREE.Vector2(PROJ_R0.x,PROJ_R0.z)},U0:{value:new THREE.Vector2(PROJ_U0.x,PROJ_U0.z)},size:{value:new THREE.Vector2(PROJ_W,PROJ_H)}},
+      vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
+      fragmentShader:'uniform sampler2D tEye; uniform sampler2D tH; uniform mat4 eyeVP; uniform vec2 C,R,U,R0,U0,size; varying vec2 vUv;\n void main(){ vec2 d=(vUv-0.5)*size; vec2 xz=C+R*d.x+U*d.y; vec2 rel=xz-C; vec2 huv=vec2(dot(rel,R0)/size.x+0.5,dot(rel,U0)/size.y+0.5); float h=texture2D(tH,huv).r; vec4 c=eyeVP*vec4(xz.x,h,xz.y,1.0); vec2 e=c.xy/c.w*0.5+0.5; gl_FragColor=vec4(texture2D(tEye,e).rgb,1.0);\n #include <tonemapping_fragment>\n #include <colorspace_fragment>\n }'}));
+    projQuad.frustumCulled=false; projQuadScene=new THREE.Scene(); projQuadScene.add(projQuad);
+    fetch('assets/stage_height.bin').then(x=>x.arrayBuffer()).then(buf=>{ const a=new Uint16Array(buf), f=new Float32Array(a.length); for(let i=0;i<a.length;i++) f[i]=a[i]/100-10;
+      const tx=new THREE.DataTexture(f,901,507,THREE.RedFormat,THREE.FloatType); tx.minFilter=tx.magFilter=THREE.NearestFilter; tx.needsUpdate=true; projQuad.material.uniforms.tH.value=tx; }).catch(()=>{});
+  }
+  const U_=projQuad.material.uniforms; U_.tEye.value=projRT.texture; U_.C.value.set(cx,cz); U_.R.value.set(r.x,r.z); U_.U.value.set(u.x,u.z); U_.eyeVP.value.multiplyMatrices(e.projectionMatrix,e.matrixWorldInverse);
+}
+/* where a point in the scene lands on the table for the viewer: slide it along the line from the eye down to the stage */
+function projTable(v){ if(!projIllu) return v; const k=projEye.y/Math.max(1,projEye.y-v.y); v.set(projEye.x+(v.x-projEye.x)*k, 0, projEye.z+(v.z-projEye.z)*k); return v; }
 /* close-up camera for the projection: stands out over the canal and looks back at the vessels, so the tender and the battery swap are in front and the quay cranes are behind them */
 const projClose=new THREE.PerspectiveCamera(40,16/9,1,6000); const projCT=new V3(); let projCInit=false, projSide=1;
 function projCloseUpdate(dt){
@@ -3317,19 +3352,21 @@ function projCloseUpdate(dt){
   projClose.position.set(projCT.x+nx*Math.cos(el)*d, Math.max(projCT.y,0)+Math.sin(el)*d, projCT.z+nz*Math.cos(el)*d);
   const sh=lock?20:16; projClose.lookAt(projCT.x+nx*sh,Math.max(projCT.y,0),projCT.z+nz*sh);   // aim a little short of the vessels so they sit above the caption bar
 }
-let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_SIZES=[[0.61,0.635,0.345],[0.706,0.652,0.206]]; let PROJ_INSET=PROJ_SIZES[0], projSize=0;   // tree models read as dark stars from straight above, the ground photo already shows the canopy
+let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_SIZES={'1':[[0.61,0.635,0.345],[0.706,0.652,0.206]],'-1':[[0.035,0.025,0.345],[0.06,0.04,0.206]]}; let PROJ_INSET=PROJ_SIZES['-1'][0], projSize=0;   // tree models read as dark stars from straight above, the ground photo already shows the canopy
 function projNextScenario(){ projIdx=(projIdx+1)%projList.length; setScenario(projList[projIdx]); guided=false; setPaused(false); }
 function startProjection(){
+  try{ const sv=JSON.parse(localStorage.getItem('albertCanalProjView')||'null'); if(sv){ projFlip=sv.f===1?1:-1; projIllu=sv.i!==false; projEyeD=+sv.d||projEyeD; projEyeH=+sv.h||projEyeH; } }catch(e){}
+  if(params.has('flat2d')) projIllu=false; if(params.get('side')==='south') projFlip=1; if(params.get('side')==='north') projFlip=-1; projSetup();
   document.body.classList.add('proj'); guided=false; projFog=scene.fog; scene.fog=null; camera.aspect=16/9; camera.updateProjectionMatrix(); projInset=!params.has('noinset');
   { const want=(params.get('proj')||'').split(',').filter(k=>SCN[k]); if(want.length) projList=want; projIdx=0; setScenario(projList[0]); guided=false; setPaused(false); }
   scene.traverse(o=>{ if(o.isSprite||o.name==='treeBill') o.visible=false; });   // flat tree cards read as specks from straight above; the ground photo already shows the canopy
   const ui=document.createElement('div'); ui.id='projUI'; document.body.appendChild(ui);
-  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   V other side   B close-up size   Space pause'; ui.appendChild(tip);
+  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   V viewer side   M 3D illusion on or off   Arrows eye height and distance   B close-up size   Space pause'; ui.appendChild(tip);
   const over=document.createElement('div'); over.id='projOver'; document.body.appendChild(over); over.appendChild($('labels')); labelsOn=true;
-  const guide=document.createElement('img'); guide.id='projGuide'; guide.src='../print/top_view_for_projection_alignment.png'; over.appendChild(guide);
+  const guide=document.createElement('img'); guide.id='projGuide'; over.appendChild(guide);
   const cap=document.createElement('div'); cap.id='projCap'; cap.innerHTML='<div class="k"></div><div class="h"></div><div class="b"></div><div class="bt"><span>e-barge packs</span><span class="cell"><i></i></span><span class="pc"></span></div><div class="bar"><i></i></div>'; over.appendChild(cap);
   { const fr=document.createElement('div'); fr.id='projIn'; fr.innerHTML='<span>Close-up</span>'; over.appendChild(fr); if(!projInset) over.classList.add('noin'); }
-  const layout=()=>{ PROJ_INSET=PROJ_SIZES[projSize]; const [fx,fy,fw]=PROJ_INSET, fh=fw*PROJ_W/PROJ_H*9/16, fr=$('projIn');
+  const layout=()=>{ PROJ_INSET=PROJ_SIZES[String(projFlip)][projSize]; guide.style.transform=projFlip<0?'rotate(180deg)':''; guide.src=projIllu?'../print/stage/stage_top_view.png':'../print/top_view_for_projection_alignment.png'; const [fx,fy,fw]=PROJ_INSET, fh=fw*PROJ_W/PROJ_H*9/16, fr=$('projIn');
     fr.style.left=(fx*100)+'%'; fr.style.top=(fy*100)+'%'; fr.style.width=(fw*100)+'%';
     cap.style.left=(fx*100)+'%'; cap.style.width=(fw*100)+'%'; cap.style.top='auto'; cap.style.bottom=(100-(fy+fh)*100)+'%'; cap.style.borderRadius='0 0 .3em .3em'; cap.style.background='rgba(6,20,38,.78)'; };
   window.__projLayout=layout; setTimeout(layout,0);
@@ -3359,6 +3396,7 @@ function startProjection(){
     if(save) try{ localStorage.setItem(KEY,JSON.stringify(P.map(([a,c])=>[a/innerWidth,c/innerHeight]))); }catch(e){} }
   window.__projPin=()=>pin(false); resize();
   addEventListener('keydown',e=>{ const k=e.key.toLowerCase();
-    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='v'){ projSide=-projSide; } else if(k==='b'){ projSize=(projSize+1)%PROJ_SIZES.length; window.__projLayout(); } else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
+    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='v'||k==='m'||e.key.startsWith('Arrow')){ if(k==='v') projFlip=-projFlip; else if(k==='m') projIllu=!projIllu; else if(e.key==='ArrowUp') projEyeH=Math.min(3000,projEyeH*1.06); else if(e.key==='ArrowDown') projEyeH=Math.max(250,projEyeH/1.06); else if(e.key==='ArrowRight') projEyeD=Math.min(4000,projEyeD*1.06); else if(e.key==='ArrowLeft') projEyeD=Math.max(500,projEyeD/1.06);
+      projSetup(); window.__projLayout(); try{ localStorage.setItem('albertCanalProjView',JSON.stringify({f:projFlip,i:projIllu,d:projEyeD,h:projEyeH})); }catch(x){} e.preventDefault(); } else if(k==='b'){ projSize=(projSize+1)%PROJ_SIZES.length; window.__projLayout(); } else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
 }
 </script>

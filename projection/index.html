@@ -3334,11 +3334,15 @@ function projSetup(){
       vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
       fragmentShader:'uniform sampler2D tEye; uniform sampler2D tH; uniform mat4 eyeVP; uniform vec2 C,R,U,R0,U0,size; varying vec2 vUv;\n void main(){ vec2 d=(vUv-0.5)*size; vec2 xz=C+R*d.x+U*d.y; vec2 rel=xz-C; vec2 huv=vec2(dot(rel,R0)/size.x+0.5,dot(rel,U0)/size.y+0.5); float h=texture2D(tH,huv).r; vec4 c=eyeVP*vec4(xz.x,h,xz.y,1.0); vec2 e=c.xy/c.w*0.5+0.5; gl_FragColor=vec4(texture2D(tEye,e).rgb,1.0);\n #include <tonemapping_fragment>\n #include <colorspace_fragment>\n }'}));
     projQuad.frustumCulled=false; projQuadScene=new THREE.Scene(); projQuadScene.add(projQuad);
-    fetch('assets/stage_height.bin').then(x=>x.arrayBuffer()).then(buf=>{ const a=new Uint16Array(buf), f=new Float32Array(a.length); for(let i=0;i<a.length;i++) f[i]=a[i]/100-10;
-      const tx=new THREE.DataTexture(f,901,507,THREE.RedFormat,THREE.FloatType); tx.minFilter=tx.magFilter=THREE.NearestFilter; tx.needsUpdate=true; projQuad.material.uniforms.tH.value=tx; }).catch(()=>{});
+    projLoadHeight();
   }
   const U_=projQuad.material.uniforms; U_.tEye.value=projRT.texture; U_.C.value.set(cx,cz); U_.R.value.set(r.x,r.z); U_.U.value.set(u.x,u.z); U_.eyeVP.value.multiplyMatrices(e.projectionMatrix,e.matrixWorldInverse);
 }
+/* the height of the print that is on the table: 'hybrid' (buildings, lock, station and containers printed) or 'stage' (flat white stage) */
+let projModel='hybrid';
+function projLoadHeight(){ const want=projModel;
+  fetch('assets/'+want+'_height.bin').then(x=>x.arrayBuffer()).then(buf=>{ if(want!==projModel||!projQuad) return; const a=new Uint16Array(buf), f=new Float32Array(a.length); for(let i=0;i<a.length;i++) f[i]=a[i]/100-10;
+    const tx=new THREE.DataTexture(f,1801,1013,THREE.RedFormat,THREE.FloatType); tx.minFilter=tx.magFilter=THREE.NearestFilter; tx.needsUpdate=true; const old=projQuad.material.uniforms.tH.value; projQuad.material.uniforms.tH.value=tx; if(old&&old.image&&old.image.width>1) old.dispose(); }).catch(()=>{}); }
 /* where a point in the scene lands on the table for the viewer: slide it along the line from the eye down to the stage */
 function projTable(v){ if(!projIllu) return v; const k=projEye.y/Math.max(1,projEye.y-v.y); v.set(projEye.x+(v.x-projEye.x)*k, 0, projEye.z+(v.z-projEye.z)*k); return v; }
 /* close-up camera for the projection: stands out over the canal and looks back at the vessels, so the tender and the battery swap are in front and the quay cranes are behind them */
@@ -3355,18 +3359,19 @@ function projCloseUpdate(dt){
 let projList=['berth','lock'], projIdx=0, projTick=0, projInset=true, projFog=null; const projTrees=[], PROJ_SIZES={'1':[[0.61,0.635,0.345],[0.706,0.652,0.206]],'-1':[[0.035,0.025,0.345],[0.06,0.04,0.206]]}; let PROJ_INSET=PROJ_SIZES['-1'][0], projSize=0;   // tree models read as dark stars from straight above, the ground photo already shows the canopy
 function projNextScenario(){ projIdx=(projIdx+1)%projList.length; setScenario(projList[projIdx]); guided=false; setPaused(false); }
 function startProjection(){
-  try{ const sv=JSON.parse(localStorage.getItem('albertCanalProjView')||'null'); if(sv){ projFlip=sv.f===1?1:-1; projIllu=sv.i!==false; projEyeD=+sv.d||projEyeD; projEyeH=+sv.h||projEyeH; } }catch(e){}
+  try{ const sv=JSON.parse(localStorage.getItem('albertCanalProjView')||'null'); if(sv){ if(sv.m==='stage'||sv.m==='hybrid') projModel=sv.m; projFlip=sv.f===1?1:-1; projIllu=sv.i!==false; projEyeD=+sv.d||projEyeD; projEyeH=+sv.h||projEyeH; } }catch(e){}
+  if(params.get('model')==='stage'||params.get('model')==='hybrid') projModel=params.get('model');
   if(params.has('flat2d')) projIllu=false; if(params.get('side')==='south') projFlip=1; if(params.get('side')==='north') projFlip=-1; projSetup();
   document.body.classList.add('proj'); guided=false; projFog=scene.fog; scene.fog=null; camera.aspect=16/9; camera.updateProjectionMatrix(); projInset=!params.has('noinset');
   { const want=(params.get('proj')||'').split(',').filter(k=>SCN[k]); if(want.length) projList=want; projIdx=0; setScenario(projList[0]); guided=false; setPaused(false); }
   scene.traverse(o=>{ if(o.isSprite||o.name==='treeBill') o.visible=false; });   // flat tree cards read as specks from straight above; the ground photo already shows the canopy
   const ui=document.createElement('div'); ui.id='projUI'; document.body.appendChild(ui);
-  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   V viewer side   M 3D illusion on or off   Arrows eye height and distance   B close-up size   Space pause'; ui.appendChild(tip);
+  const tip=document.createElement('div'); tip.className='tip'; tip.textContent='Drag the 4 circles onto the corners of the model.  H hide circles   R reset   F full screen   G model outline   C caption   L labels   I close-up   V viewer side   M 3D illusion on or off   P which print is on the table   Arrows eye height and distance   B close-up size   Space pause'; ui.appendChild(tip);
   const over=document.createElement('div'); over.id='projOver'; document.body.appendChild(over); over.appendChild($('labels')); labelsOn=true;
   const guide=document.createElement('img'); guide.id='projGuide'; over.appendChild(guide);
   const cap=document.createElement('div'); cap.id='projCap'; cap.innerHTML='<div class="k"></div><div class="h"></div><div class="b"></div><div class="bt"><span>e-barge packs</span><span class="cell"><i></i></span><span class="pc"></span></div><div class="bar"><i></i></div>'; over.appendChild(cap);
   { const fr=document.createElement('div'); fr.id='projIn'; fr.innerHTML='<span>Close-up</span>'; over.appendChild(fr); if(!projInset) over.classList.add('noin'); }
-  const layout=()=>{ PROJ_INSET=PROJ_SIZES[String(projFlip)][projSize]; guide.style.transform=projFlip<0?'rotate(180deg)':''; guide.src=projIllu?'../print/stage/stage_top_view.png':'../print/top_view_for_projection_alignment.png'; const [fx,fy,fw]=PROJ_INSET, fh=fw*PROJ_W/PROJ_H*9/16, fr=$('projIn');
+  const layout=()=>{ PROJ_INSET=PROJ_SIZES[String(projFlip)][projSize]; guide.style.transform=projFlip<0?'rotate(180deg)':''; guide.src=!projIllu?'../print/top_view_for_projection_alignment.png':projModel==='stage'?'../print/stage/stage_top_view.png':'../print/hybrid/hybrid_top_view.png'; const [fx,fy,fw]=PROJ_INSET, fh=fw*PROJ_W/PROJ_H*9/16, fr=$('projIn');
     fr.style.left=(fx*100)+'%'; fr.style.top=(fy*100)+'%'; fr.style.width=(fw*100)+'%';
     cap.style.left=(fx*100)+'%'; cap.style.width=(fw*100)+'%'; cap.style.top='auto'; cap.style.bottom=(100-(fy+fh)*100)+'%'; cap.style.borderRadius='0 0 .3em .3em'; cap.style.background='rgba(6,20,38,.78)'; };
   window.__projLayout=layout; setTimeout(layout,0);
@@ -3396,7 +3401,7 @@ function startProjection(){
     if(save) try{ localStorage.setItem(KEY,JSON.stringify(P.map(([a,c])=>[a/innerWidth,c/innerHeight]))); }catch(e){} }
   window.__projPin=()=>pin(false); resize();
   addEventListener('keydown',e=>{ const k=e.key.toLowerCase();
-    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='v'||k==='m'||e.key.startsWith('Arrow')){ if(k==='v') projFlip=-projFlip; else if(k==='m') projIllu=!projIllu; else if(e.key==='ArrowUp') projEyeH=Math.min(3000,projEyeH*1.06); else if(e.key==='ArrowDown') projEyeH=Math.max(250,projEyeH/1.06); else if(e.key==='ArrowRight') projEyeD=Math.min(4000,projEyeD*1.06); else if(e.key==='ArrowLeft') projEyeD=Math.max(500,projEyeD/1.06);
-      projSetup(); window.__projLayout(); try{ localStorage.setItem('albertCanalProjView',JSON.stringify({f:projFlip,i:projIllu,d:projEyeD,h:projEyeH})); }catch(x){} e.preventDefault(); } else if(k==='b'){ projSize=(projSize+1)%PROJ_SIZES.length; window.__projLayout(); } else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
+    if(k==='h') ui.classList.toggle('off'); else if(k==='g') over.classList.toggle('guide'); else if(k==='c') over.classList.toggle('nocap'); else if(k==='v'||k==='m'||k==='p'||e.key.startsWith('Arrow')){ if(k==='v') projFlip=-projFlip; else if(k==='p'){ projModel=projModel==='hybrid'?'stage':'hybrid'; projLoadHeight(); } else if(k==='m') projIllu=!projIllu; else if(e.key==='ArrowUp') projEyeH=Math.min(3000,projEyeH*1.06); else if(e.key==='ArrowDown') projEyeH=Math.max(250,projEyeH/1.06); else if(e.key==='ArrowRight') projEyeD=Math.min(4000,projEyeD*1.06); else if(e.key==='ArrowLeft') projEyeD=Math.max(500,projEyeD/1.06);
+      projSetup(); window.__projLayout(); try{ localStorage.setItem('albertCanalProjView',JSON.stringify({f:projFlip,i:projIllu,d:projEyeD,h:projEyeH,m:projModel})); }catch(x){} e.preventDefault(); } else if(k==='b'){ projSize=(projSize+1)%PROJ_SIZES.length; window.__projLayout(); } else if(k==='i'){ projInset=!projInset; over.classList.toggle('noin',!projInset); } else if(k==='l') over.classList.toggle('nolab'); else if(k==='r'){ P=base(); pin(true); } else if(k==='f'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); } else if(k===' '){ setPaused(!paused); e.preventDefault(); } },true);
 }
 </script>
